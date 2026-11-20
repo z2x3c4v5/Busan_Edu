@@ -46,6 +46,7 @@ function listen(handlers = {}){
   let rec, stream, mr, chunks = [], ac, raf, silenceT, maxT, stopped = false;
   const segs = [];          // 확정된 구간: [후보1, 후보2, ...]
   let interim = "", error = null;
+  const snapshots = [];     // 말하는 도중의 인식 결과도 채점 후보로 써요 (중간 결과가 더 정확할 때가 있어요)
 
   let resolveDone;
   const done = new Promise(r => resolveDone = r);
@@ -71,6 +72,7 @@ function listen(handlers = {}){
       for (let k = 0; k < K; k++) candidates.push(finals.map(s => s[k] ?? s[0]).join(" "));
       if (interim) candidates = candidates.map(c => c + " " + interim);
     } else if (interim) candidates = [interim];
+    candidates.push(...snapshots.slice(-4));
     resolveDone({candidates, audioUrl, error});
   };
 
@@ -92,7 +94,9 @@ function listen(handlers = {}){
         if (r.isFinal) segs[i] = Array.from(r).map(a => a.transcript.trim());
         else interim += r[0].transcript;
       }
-      handlers.onText && handlers.onText((segs.filter(Boolean).map(s => s[0]).join(" ") + " " + interim).trim());
+      const full = (segs.filter(Boolean).map(s => s[0]).join(" ") + " " + interim).trim();
+      if (full && snapshots[snapshots.length - 1] !== full) snapshots.push(full);
+      handlers.onText && handlers.onText(full);
       clearTimeout(silenceT);
       silenceT = setTimeout(stop, 1800);     // 말이 1.8초 멈추면 자동 종료
     };
